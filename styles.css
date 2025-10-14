@@ -1,0 +1,71 @@
+/**
+ * K-Blocker スタイルシート
+ * 非表示コメントの見た目を定義
+ */
+
+/* 非表示状態のコメント */
+.k-blocker-collapsed {
+  border-left: 3px solid #e74c3c;
+  background-color: #fef5f5;
+  padding: 8px 12px;
+  margin: 4px 0;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+/* 非表示通知テキスト */
+.k-blocker-hidden-notice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.k-blocker-text {
+  color: #666;
+  font-style: italic;
+}
+
+/* トグルボタン（表示する） */
+.k-blocker-toggle {
+  padding: 4px 12px;
+  background-color: #3498db;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  transition: background-color 0.2s ease;
+}
+
+.k-blocker-toggle:hover {
+  background-color: #2980b9;
+}
+
+/* 閉じるボタン（展開時） */
+.k-blocker-close-btn {
+  margin-top: 12px;
+  padding: 6px 16px;
+  background-color: #95a5a6;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  transition: background-color 0.2s ease;
+}
+
+.k-blocker-close-btn:hover {
+  background-color: #7f8c8d;
+}
+
+/* 展開されたコメントのスタイル */
+[data-k-blocker-hidden="true"]:not(.k-blocker-collapsed) {
+  border-left: 3px solid #27ae60;
+  background-color: #f0f9f4;
+  padding: 12px;
+  border-radius: 4px;
+  margin: 8px 0;
+}
