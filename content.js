@@ -1,11 +1,11 @@
 /**
- * K-Blocker Content Script v1.1
+ * K-Blocker Content Script v1.2
  * Yahoo!Newsコメント欄の低品質コメント非表示システム
  *
- * 【修正内容】
- * - コメント検出の精度を大幅に向上
- * - 記事本体への誤爆を完全防止
- * - より厳密なセレクタに変更
+ * 【v1.2 修正内容】
+ * - コメント本体のみを正確にターゲット（article.sc-169yn8p-3）
+ * - 全ての投票が0の場合を非表示対象に追加
+ * - 記事本体や削除ダイアログへの誤爆を完全防止
  */
 
 // 処理済みコメントを記録（重複処理防止）
@@ -18,32 +18,45 @@ const processedComments = new Set();
  */
 function extractVoteData(commentElement) {
   try {
-    // 投票ボタン部分を探す
-    const voteButtons = commentElement.querySelectorAll("button, span, div");
+    // 投票ボタン部分を探す（より具体的なセレクタ）
+    // Yahoo!の構造: ul.sc-11pem1p-0 > li > button
+    const voteButtonContainer = commentElement.querySelector("ul.sc-11pem1p-0");
+
+    if (!voteButtonContainer) {
+      return null;
+    }
 
     let kyoukan = 0; // 共感した
     let naruhodo = 0; // なるほど
     let uun = 0; // うーん
 
-    for (const element of voteButtons) {
-      const text = element.textContent.trim();
+    // 各投票ボタンから数値を抽出
+    const buttons = voteButtonContainer.querySelectorAll("button");
 
-      // テキストから投票数を抽出
+    for (const button of buttons) {
+      const text = button.textContent.trim();
+
+      // 「共感した」ボタン
       if (text.includes("共感した")) {
         const match = text.match(/(\d+)/);
-        if (match) kyoukan = parseInt(match[1], 10);
-      } else if (text.includes("なるほど")) {
-        const match = text.match(/(\d+)/);
-        if (match) naruhodo = parseInt(match[1], 10);
-      } else if (text.includes("うーん")) {
-        const match = text.match(/(\d+)/);
-        if (match) uun = parseInt(match[1], 10);
+        if (match) {
+          kyoukan = parseInt(match[1], 10);
+        }
       }
-    }
-
-    // 全てが0の場合はデータ未読込と判断
-    if (kyoukan === 0 && naruhodo === 0 && uun === 0) {
-      return null;
+      // 「なるほど」ボタン
+      else if (text.includes("なるほど")) {
+        const match = text.match(/(\d+)/);
+        if (match) {
+          naruhodo = parseInt(match[1], 10);
+        }
+      }
+      // 「うーん」ボタン
+      else if (text.includes("うーん")) {
+        const match = text.match(/(\d+)/);
+        if (match) {
+          uun = parseInt(match[1], 10);
+        }
+      }
     }
 
     return { kyoukan, naruhodo, uun };
@@ -63,6 +76,11 @@ function shouldBlockComment(voteData) {
 
   // 総投票数
   const totalVotes = kyoukan + naruhodo + uun;
+
+  // 【判定基準0】全ての投票が0の場合は非表示
+  if (totalVotes === 0) {
+    return true;
+  }
 
   // 【判定基準1】総投票数が10件未満は非表示
   if (totalVotes < 10) {
@@ -177,80 +195,51 @@ function hideComment(commentElement) {
 
 /**
  * 単一のコメント要素を処理
- * @param {Element} commentElement - コメント要素
+ * @param {Element} commentElement - コメント要素（article.sc-169yn8p-3）
  */
 function processComment(commentElement) {
   // 処理済みチェック
-  const commentId = commentElement.getAttribute("data-comment-id") || commentElement.getAttribute("data-cid") || commentElement.id || Math.random().toString(36);
-
-  if (processedComments.has(commentId)) {
+  if (commentElement.hasAttribute("data-k-blocker-processed")) {
     return;
   }
 
   // 処理済みマーク
-  processedComments.add(commentId);
+  commentElement.setAttribute("data-k-blocker-processed", "true");
 
   // 投票データを抽出
   const voteData = extractVoteData(commentElement);
 
   // データが取得できない場合はスキップ
   if (!voteData) {
-    processedComments.delete(commentId); // 再試行可能にする
     return;
   }
 
-  console.log("K-Blocker: コメント分析", { commentId, voteData });
+  console.log("K-Blocker: コメント分析", voteData);
 
   // ブロック判定
   if (shouldBlockComment(voteData)) {
-    console.log("K-Blocker: 非表示処理実行", commentId);
+    console.log("K-Blocker: 非表示処理実行");
     hideComment(commentElement);
   }
 }
 
 /**
- * コメント要素を検出（厳密版）
- * Yahoo!コメント欄の実際の構造に基づいた検出
+ * コメント要素を検出して処理
+ * Yahoo!の正確な構造に基づいた検出
  */
 function detectAndProcessComments() {
-  // コメントコンテナを特定
-  // Yahoo!のコメント欄は #contents 以下にある
-  const contentsArea = document.querySelector('#contents, [id*="comment"]');
+  // コメント本体のみを取得（article.sc-169yn8p-3）
+  // これがコメント1件分の実体
+  const commentArticles = document.querySelectorAll("article.sc-169yn8p-3");
 
-  if (!contentsArea) {
-    console.log("K-Blocker: コメントエリアが見つかりません");
+  if (commentArticles.length === 0) {
+    console.log("K-Blocker: コメントが見つかりません");
     return;
   }
 
-  // コメント要素の候補を取得
-  // Yahoo!コメントは通常 li 要素または特定のdivで構成されている
-  const commentCandidates = contentsArea.querySelectorAll('li, [data-cid], [id*="comment-"]');
+  console.log(`K-Blocker: ${commentArticles.length}件のコメントを検出`);
 
-  let foundComments = 0;
-
-  for (const candidate of commentCandidates) {
-    const text = candidate.textContent;
-
-    // コメント要素の条件:
-    // 1. 投票ボタンのテキストを含む
-    // 2. ある程度の長さがある（広告などを除外）
-    // 3. 記事本体ではない
-    const hasVoteButtons = text.includes("共感した") && text.includes("なるほど") && text.includes("うーん");
-
-    const hasReasonableLength = text.length > 50 && text.length < 5000;
-
-    // 記事本体や関係ない要素を除外
-    const isNotArticle = !candidate.matches("article") || candidate.querySelector('[role="button"]') !== null;
-
-    if (hasVoteButtons && hasReasonableLength && isNotArticle) {
-      foundComments++;
-      processComment(candidate);
-    }
-  }
-
-  if (foundComments > 0) {
-    console.log(`K-Blocker: ${foundComments}件のコメントを検出しました`);
-  }
+  commentArticles.forEach(processComment);
 }
 
 /**
@@ -267,7 +256,7 @@ function onDomChange(mutations) {
  * 初期化処理
  */
 function init() {
-  console.log("K-Blocker: 初期化開始");
+  console.log("K-Blocker v1.2: 初期化開始");
 
   // 初回スキャン（少し遅延させる）
   setTimeout(() => {
@@ -277,7 +266,7 @@ function init() {
   // MutationObserverを設定
   const observer = new MutationObserver(onDomChange);
 
-  // コメントエリアのみ監視（より限定的に）
+  // コメントエリアのみ監視
   const targetNode = document.querySelector("#contents") || document.body;
 
   observer.observe(targetNode, {
@@ -291,7 +280,7 @@ function init() {
     detectAndProcessComments();
   }, 10000);
 
-  console.log("K-Blocker: 初期化完了");
+  console.log("K-Blocker v1.2: 初期化完了");
 }
 
 // ページ読み込み完了後に初期化
