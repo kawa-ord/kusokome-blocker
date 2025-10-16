@@ -12,6 +12,27 @@
 const processedComments = new Set();
 
 /**
+ * 数値文字列を数値に変換（万単位・カンマ対応）
+ * @param {string} text - "1.8万" or "1,234" or "308" 形式の文字列
+ * @returns {number} 数値
+ */
+function parseVoteNumber(text) {
+  // 数値部分を抽出（小数点・カンマ含む）
+  const match = text.match(/([\d,.]+)/);
+  if (!match) return 0;
+
+  // カンマを除去して数値化
+  let num = parseFloat(match[1].replace(/,/g, ""));
+
+  // 「万」が含まれている場合は10000倍
+  if (text.includes("万")) {
+    num = num * 10000;
+  }
+
+  return Math.floor(num);
+}
+
+/**
  * コメント要素から投票数データを抽出
  * @param {Element} commentElement - コメント要素
  * @returns {Object|null} 投票数オブジェクト or null
@@ -30,7 +51,7 @@ function extractVoteData(commentElement) {
     let naruhodo = 0; // なるほど
     let uun = 0; // うーん
 
-    // 各投票ボタンから数値を抽出
+    // 各投票ボタンから数値を抽出（万単位対応）
     const buttons = voteButtonContainer.querySelectorAll("button");
 
     for (const button of buttons) {
@@ -38,24 +59,15 @@ function extractVoteData(commentElement) {
 
       // 「共感した」ボタン
       if (text.includes("共感した")) {
-        const match = text.match(/(\d+)/);
-        if (match) {
-          kyoukan = parseInt(match[1], 10);
-        }
+        kyoukan = parseVoteNumber(text);
       }
       // 「なるほど」ボタン
       else if (text.includes("なるほど")) {
-        const match = text.match(/(\d+)/);
-        if (match) {
-          naruhodo = parseInt(match[1], 10);
-        }
+        naruhodo = parseVoteNumber(text);
       }
       // 「うーん」ボタン
       else if (text.includes("うーん")) {
-        const match = text.match(/(\d+)/);
-        if (match) {
-          uun = parseInt(match[1], 10);
-        }
+        uun = parseVoteNumber(text);
       }
     }
 
@@ -146,7 +158,7 @@ function hideComment(commentElement) {
       border: none;
       border-radius: 4px;
       cursor: pointer;
-      font-size: 12px;
+      font-size: 11px;
       font-weight: 500;
     ">表示する</button>
   `;
@@ -178,7 +190,7 @@ function hideComment(commentElement) {
       border: none;
       border-radius: 4px;
       cursor: pointer;
-      font-size: 12px;
+      font-size: 11px;
       font-weight: normal;
       line-height: 1;
       white-space: nowrap;
