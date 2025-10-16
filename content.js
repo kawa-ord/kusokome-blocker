@@ -161,31 +161,40 @@ function hideComment(commentElement) {
     commentElement.innerHTML = originalHTML;
     commentElement.style.display = originalDisplay;
 
-    // 閉じるボタンを追加
+    // コメント全体を相対配置にする
+    commentElement.style.position = "relative";
+
+    // 閉じるボタンを追加（右上配置・デザイナー仕様）
     const closeButton = document.createElement("button");
     closeButton.className = "k-blocker-close-btn";
     closeButton.textContent = "閉じる";
     closeButton.style.cssText = `
-      display: block;
-      margin-top: 12px;
+      position: absolute;
+      top: 8px;
+      right: 8px;
       padding: 6px 16px;
-      background-color: #95a5a6;
-      color: white;
+      background-color: #a8b1b8;
+      color: #ffffff;
       border: none;
       border-radius: 4px;
       cursor: pointer;
       font-size: 12px;
-      font-weight: 500;
+      font-weight: normal;
+      line-height: 1;
+      white-space: nowrap;
+      z-index: 10;
     `;
     closeButton.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
       // 再度非表示にする
       commentElement.innerHTML = "";
+      commentElement.style.position = ""; // position解除
       commentElement.appendChild(hiddenNotice);
     });
 
-    commentElement.appendChild(closeButton);
+    // 最初の子要素として挿入（一番上に表示）
+    commentElement.insertBefore(closeButton, commentElement.firstChild);
   });
 
   // コメント内容を非表示通知に置き換え
