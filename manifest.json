@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "KusokomeBlocker：クソコメ☆ブロッカー",
-  "version": "1.0.0",
-  "description": "Yahoo!Newsコメント欄の低品質コメントを自動非表示。読むに値しない目にもしたくないノイズレベルのコメントを視界から消し去ります。",
+  "name": "KusokomeBlocker クソコメ☆ブロッカー",
+  "version": "2.0.0",
+  "description": "Yahoo!Newsコメント欄の低品質コメントを自動非表示。読むに値しない、目にもしたくない、ノイズレベルのコメントを視界から消し去ります。",
 
   "permissions": ["storage"],
 
