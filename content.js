@@ -1,243 +1,240 @@
+
 /**
- * K-Blocker Content Script v1.2
- * Yahoo!Newsコメント欄の低品質コメント非表示システム
+ * K-Blocker Content Script v2.1
+ * Yahoo!ニュースコメント欄の低品質コメント非表示システム
  *
- * 【v1.2 修正内容】
- * - コメント本体のみを正確にターゲット（article.sc-169yn8p-3）
- * - 全ての投票が0の場合を非表示対象に追加
- * - 記事本体や削除ダイアログへの誤爆を完全防止
+ * 【v2.1 修正内容】
+ * - 新しいYahoo!ニュースDOM構造に対応
+ * - コメント外枠とコメント本体を分離
+ * - 表示中のリアクションボタンから投票数を取得
+ * - 投票数の取得に失敗した場合は再試行
+ * - DOMのinnerHTMLを破壊しない非表示・再表示方式
+ * - 非表示通知・再表示ボタンの重複を防止
  */
 
-// 処理済みコメントを記録（重複処理防止）
-const processedComments = new Set();
+// DOMセレクタ
+const SELECTORS = {
+  commentWrapper: "article.sc-b798a33e-0",
+  commentBody: "article.sc-93daaf6c-3",
+  voteList: "ul.sc-cecd0f40-0",
+};
+
+// 非表示UIのクラス名
+const HIDDEN_NOTICE_CLASS = "k-blocker-hidden-notice";
+const SHOW_BUTTON_CLASS = "k-blocker-show-button";
+const CLOSE_BUTTON_CLASS = "k-blocker-close-button";
 
 /**
  * 数値文字列を数値に変換（万単位・カンマ対応）
- * @param {string} text - "1.8万" or "1,234" or "308" 形式の文字列
- * @returns {number} 数値
+ * @param {string} text
+ * @returns {number|null}
  */
 function parseVoteNumber(text) {
-  // 数値部分を抽出（小数点・カンマ含む）
   const match = text.match(/([\d,.]+)/);
-  if (!match) return 0;
 
-  // カンマを除去して数値化
+  if (!match) {
+    return null;
+  }
+
   let num = parseFloat(match[1].replace(/,/g, ""));
 
-  // 「万」が含まれている場合は10000倍
+  if (!Number.isFinite(num)) {
+    return null;
+  }
+
   if (text.includes("万")) {
-    num = num * 10000;
+    num *= 10000;
   }
 
   return Math.floor(num);
 }
 
 /**
- * コメント要素から投票数データを抽出
- * @param {Element} commentElement - コメント要素
- * @returns {Object|null} 投票数オブジェクト or null
+ * コメント外枠からリアクション数を抽出
+ * @param {Element} wrapper
+ * @returns {{kyoukan:number, naruhodo:number, uun:number}|null}
  */
-function extractVoteData(commentElement) {
-  try {
-    // 投票ボタン部分を探す（より具体的なセレクタ）
-    // Yahoo!の構造: ul.sc-11pem1p-0 > li > button
-    const voteButtonContainer = commentElement.querySelector("ul.sc-11pem1p-0");
+function extractVoteData(wrapper) {
+  const voteButtonContainer = wrapper.querySelector(SELECTORS.voteList);
 
-    if (!voteButtonContainer) {
+  if (!voteButtonContainer) {
+    return null;
+  }
+
+  const buttons = [...voteButtonContainer.querySelectorAll("button")];
+
+  /**
+   * 表示中の指定リアクション数を取得
+   * @param {string} label
+   * @returns {number|null}
+   */
+  const getVisibleVoteCount = (label) => {
+    const button = buttons.find((button) => {
+      const style = getComputedStyle(button);
+      const rect = button.getBoundingClientRect();
+
+      return (
+        button.innerText.includes(label) &&
+        style.display !== "none" &&
+        style.visibility !== "hidden" &&
+        rect.width > 0 &&
+        rect.height > 0
+      );
+    });
+
+    if (!button) {
       return null;
     }
 
-    let kyoukan = 0; // 共感した
-    let naruhodo = 0; // なるほど
-    let uun = 0; // うーん
+    const text = button.innerText.replace(/\s+/g, "");
+    const countText = text.replace(label, "");
 
-    // 各投票ボタンから数値を抽出（万単位対応）
-    const buttons = voteButtonContainer.querySelectorAll("button");
-
-    for (const button of buttons) {
-      const text = button.textContent.trim();
-
-      // 「共感した」ボタン
-      if (text.includes("共感した")) {
-        kyoukan = parseVoteNumber(text);
-      }
-      // 「なるほど」ボタン
-      else if (text.includes("なるほど")) {
-        naruhodo = parseVoteNumber(text);
-      }
-      // 「うーん」ボタン
-      else if (text.includes("うーん")) {
-        uun = parseVoteNumber(text);
-      }
+    if (!/[\d,.]+/.test(countText)) {
+      return null;
     }
 
-    return { kyoukan, naruhodo, uun };
-  } catch (error) {
-    console.error("K-Blocker: 投票データ抽出エラー", error);
+    return parseVoteNumber(countText);
+  };
+
+  const kyoukan = getVisibleVoteCount("共感した");
+  const naruhodo = getVisibleVoteCount("なるほど");
+  const uun = getVisibleVoteCount("うーん");
+
+  if (
+    kyoukan === null ||
+    naruhodo === null ||
+    uun === null
+  ) {
     return null;
   }
+
+  return {
+    kyoukan,
+    naruhodo,
+    uun,
+  };
 }
 
 /**
- * 判定基準に基づいてコメントをブロックすべきか判定
- * @param {Object} voteData - 投票数データ
- * @returns {boolean} true=非表示にすべき, false=表示OK
+ * 判定基準に基づいてコメントを非表示にするか判定
+ * @param {{kyoukan:number, naruhodo:number, uun:number}} voteData
+ * @returns {boolean}
  */
 function shouldBlockComment(voteData) {
   const { kyoukan, naruhodo, uun } = voteData;
 
-  // 総投票数
   const totalVotes = kyoukan + naruhodo + uun;
 
-  // 【判定基準0】全ての投票が0の場合は非表示
+  // 判定基準0：全ての投票が0
   if (totalVotes === 0) {
     return true;
   }
 
-  // 【判定基準1】総投票数が10件未満は非表示
+  // 判定基準1：総投票数が10件未満
   if (totalVotes < 10) {
     return true;
   }
 
-  // 【判定基準2】「うーん」が「共感した」+「なるほど」を上回る場合は非表示
+  // 判定基準2：「うーん」が肯定票を上回る
   const positiveVotes = kyoukan + naruhodo;
+
   if (uun > positiveVotes) {
     return true;
   }
 
-  // 【判定基準3】「うーん」が50%以上の場合は非表示
+  // 判定基準3：「うーん」が総投票数の50%以上
   const uunPercentage = (uun / totalVotes) * 100;
+
   if (uunPercentage >= 50) {
     return true;
   }
 
-  // 全ての判定をパスした場合は表示OK
   return false;
 }
 
 /**
- * コメントを非表示にする処理
- * @param {Element} commentElement - 対象コメント要素
+ * コメント本体を非表示にする
+ * DOMのinnerHTMLは変更しない
+ * @param {Element} commentElement
  */
 function hideComment(commentElement) {
-  // 既に処理済みならスキップ
-  if (commentElement.hasAttribute("data-k-blocker-hidden")) {
+  // すでに非表示通知が存在する場合は重複処理しない
+  if (
+    commentElement.nextElementSibling?.classList.contains(
+      HIDDEN_NOTICE_CLASS
+    )
+  ) {
     return;
   }
 
-  // 元のコメント内容を保存
-  const originalHTML = commentElement.innerHTML;
-  const originalDisplay = commentElement.style.display || "";
+  const originalDisplay = commentElement.style.display;
 
-  // 非表示マーカーを追加
-  commentElement.setAttribute("data-k-blocker-hidden", "true");
-  commentElement.setAttribute("data-k-blocker-original-html", originalHTML);
-  commentElement.setAttribute("data-k-blocker-original-display", originalDisplay);
+  commentElement.style.display = "none";
 
-  // トグル用の表示要素を作成
-  const hiddenNotice = document.createElement("div");
-  hiddenNotice.className = "k-blocker-hidden-notice";
-  hiddenNotice.style.cssText = `
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 8px 12px;
-    background-color: #fef5f5;
-    border-left: 3px solid #e74c3c;
-    border-radius: 4px;
-    margin: 4px 0;
-    font-size: 13px;
-  `;
+  // 非表示通知
+  const notice = document.createElement("div");
+  notice.className = HIDDEN_NOTICE_CLASS;
+  notice.textContent = "非表示にしました";
 
-  hiddenNotice.innerHTML = `
-    <span style="color: #666; font-style: italic;">非表示にしました</span>
-    <button class="k-blocker-toggle" style="
-      padding: 4px 12px;
-      background-color: #3498db;
-      color: white;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 11px;
-      font-weight: 500;
-    ">表示する</button>
-  `;
+  // 再表示ボタン
+  const showButton = document.createElement("button");
+  showButton.type = "button";
+  showButton.className = SHOW_BUTTON_CLASS;
+  showButton.textContent = "表示する";
 
-  // トグルボタンのクリックイベント
-  const toggleButton = hiddenNotice.querySelector(".k-blocker-toggle");
-  toggleButton.addEventListener("click", (e) => {
-    e.preventDefault();
-    e.stopPropagation();
+  notice.appendChild(showButton);
 
-    // 元のHTMLを復元
-    commentElement.innerHTML = originalHTML;
+  commentElement.insertAdjacentElement("afterend", notice);
+
+  // 再表示処理
+  showButton.addEventListener("click", () => {
     commentElement.style.display = originalDisplay;
+    notice.remove();
 
-    // コメント全体を相対配置にする
-    commentElement.style.position = "relative";
-
-    // 閉じるボタンを追加（右上配置・デザイナー仕様）
+    // 再表示後の非表示ボタン
     const closeButton = document.createElement("button");
-    closeButton.className = "k-blocker-close-btn";
-    closeButton.textContent = "閉じる";
-    closeButton.style.cssText = `
-      position: absolute;
-      top: 8px;
-      right: 8px;
-      padding: 6px 16px;
-      background-color: #a8b1b8;
-      color: #ffffff;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 11px;
-      font-weight: normal;
-      line-height: 1;
-      white-space: nowrap;
-      z-index: 10;
-    `;
-    closeButton.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      // 再度非表示にする
-      commentElement.innerHTML = "";
-      commentElement.style.position = ""; // position解除
-      commentElement.appendChild(hiddenNotice);
+    closeButton.type = "button";
+    closeButton.className = CLOSE_BUTTON_CLASS;
+    closeButton.textContent = "非表示";
+
+    closeButton.addEventListener("click", () => {
+      hideComment(commentElement);
+      closeButton.remove();
     });
 
-    // 最初の子要素として挿入（一番上に表示）
-    commentElement.insertBefore(closeButton, commentElement.firstChild);
+    commentElement.insertAdjacentElement("afterend", closeButton);
   });
-
-  // コメント内容を非表示通知に置き換え
-  commentElement.innerHTML = "";
-  commentElement.appendChild(hiddenNotice);
 }
 
 /**
- * 単一のコメント要素を処理
- * @param {Element} commentElement - コメント要素（article.sc-169yn8p-3）
+ * 単一のコメントを処理
+ * @param {Element} wrapper
  */
-function processComment(commentElement) {
+function processComment(wrapper) {
+  const commentElement = wrapper.querySelector(SELECTORS.commentBody);
+
+  if (!commentElement) {
+    return;
+  }
+
   // 処理済みチェック
   if (commentElement.hasAttribute("data-k-blocker-processed")) {
     return;
   }
 
-  // 処理済みマーク
-  commentElement.setAttribute("data-k-blocker-processed", "true");
+  // 外枠からリアクション数を取得
+  const voteData = extractVoteData(wrapper);
 
-  // 投票データを抽出
-  const voteData = extractVoteData(commentElement);
-
-  // データが取得できない場合はスキップ
+  // 取得できなければ処理済みにせず、次回スキャンで再試行
   if (!voteData) {
     return;
   }
 
+  // 正常に取得できた時点で処理済みにする
+  commentElement.setAttribute("data-k-blocker-processed", "true");
+
   console.log("K-Blocker: コメント分析", voteData);
 
-  // ブロック判定
   if (shouldBlockComment(voteData)) {
     console.log("K-Blocker: 非表示処理実行");
     hideComment(commentElement);
@@ -245,29 +242,29 @@ function processComment(commentElement) {
 }
 
 /**
- * コメント要素を検出して処理
- * Yahoo!の正確な構造に基づいた検出
+ * コメントを検出して処理
  */
 function detectAndProcessComments() {
-  // コメント本体のみを取得（article.sc-169yn8p-3）
-  // これがコメント1件分の実体
-  const commentArticles = document.querySelectorAll("article.sc-169yn8p-3");
+  const commentWrappers = document.querySelectorAll(
+    SELECTORS.commentWrapper
+  );
 
-  if (commentArticles.length === 0) {
+  if (commentWrappers.length === 0) {
     console.log("K-Blocker: コメントが見つかりません");
     return;
   }
 
-  console.log(`K-Blocker: ${commentArticles.length}件のコメントを検出`);
+  console.log(
+    `K-Blocker: ${commentWrappers.length}件のコメント外枠を検出`
+  );
 
-  commentArticles.forEach(processComment);
+  commentWrappers.forEach(processComment);
 }
 
 /**
  * MutationObserverのコールバック
  */
-function onDomChange(mutations) {
-  // 少し遅延させて、投票数の読み込みを待つ
+function onDomChange() {
   setTimeout(() => {
     detectAndProcessComments();
   }, 800);
@@ -277,18 +274,18 @@ function onDomChange(mutations) {
  * 初期化処理
  */
 function init() {
-  console.log("K-Blocker v1.2: 初期化開始");
+  console.log("K-Blocker v2.1: 初期化開始");
 
-  // 初回スキャン（少し遅延させる）
+  // 初回スキャン
   setTimeout(() => {
     detectAndProcessComments();
   }, 1500);
 
-  // MutationObserverを設定
+  // DOM変更監視
   const observer = new MutationObserver(onDomChange);
 
-  // コメントエリアのみ監視
-  const targetNode = document.querySelector("#contents") || document.body;
+  const targetNode =
+    document.querySelector("#contents") || document.body;
 
   observer.observe(targetNode, {
     childList: true,
@@ -296,12 +293,12 @@ function init() {
     attributes: false,
   });
 
-  // 定期的な再スキャン（10秒ごと）
+  // 定期スキャン
   setInterval(() => {
     detectAndProcessComments();
   }, 10000);
 
-  console.log("K-Blocker v1.2: 初期化完了");
+  console.log("K-Blocker v2.1: 初期化完了");
 }
 
 // ページ読み込み完了後に初期化
