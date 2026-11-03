@@ -1,6 +1,5 @@
-
 /**
- * K-Blocker Content Script v2.1
+ * K-Blocker Content Script v2.1.1
  * Yahoo!ニュースコメント欄の低品質コメント非表示システム
  *
  * 【v2.1 修正内容】
@@ -100,11 +99,7 @@ function extractVoteData(wrapper) {
   const naruhodo = getVisibleVoteCount("なるほど");
   const uun = getVisibleVoteCount("うーん");
 
-  if (
-    kyoukan === null ||
-    naruhodo === null ||
-    uun === null
-  ) {
+  if (kyoukan === null || naruhodo === null || uun === null) {
     return null;
   }
 
@@ -159,11 +154,7 @@ function shouldBlockComment(voteData) {
  */
 function hideComment(commentElement) {
   // すでに非表示通知が存在する場合は重複処理しない
-  if (
-    commentElement.nextElementSibling?.classList.contains(
-      HIDDEN_NOTICE_CLASS
-    )
-  ) {
+  if (commentElement.nextElementSibling?.classList.contains(HIDDEN_NOTICE_CLASS)) {
     return;
   }
 
@@ -195,7 +186,7 @@ function hideComment(commentElement) {
     const closeButton = document.createElement("button");
     closeButton.type = "button";
     closeButton.className = CLOSE_BUTTON_CLASS;
-    closeButton.textContent = "非表示";
+    closeButton.textContent = "非表示にする";
 
     closeButton.addEventListener("click", () => {
       hideComment(commentElement);
@@ -245,18 +236,14 @@ function processComment(wrapper) {
  * コメントを検出して処理
  */
 function detectAndProcessComments() {
-  const commentWrappers = document.querySelectorAll(
-    SELECTORS.commentWrapper
-  );
+  const commentWrappers = document.querySelectorAll(SELECTORS.commentWrapper);
 
   if (commentWrappers.length === 0) {
     console.log("K-Blocker: コメントが見つかりません");
     return;
   }
 
-  console.log(
-    `K-Blocker: ${commentWrappers.length}件のコメント外枠を検出`
-  );
+  console.log(`K-Blocker: ${commentWrappers.length}件のコメント外枠を検出`);
 
   commentWrappers.forEach(processComment);
 }
@@ -274,7 +261,7 @@ function onDomChange() {
  * 初期化処理
  */
 function init() {
-  console.log("K-Blocker v2.1: 初期化開始");
+  console.log("K-Blocker v2.1.1: 初期化開始");
 
   // 初回スキャン
   setTimeout(() => {
@@ -284,8 +271,7 @@ function init() {
   // DOM変更監視
   const observer = new MutationObserver(onDomChange);
 
-  const targetNode =
-    document.querySelector("#contents") || document.body;
+  const targetNode = document.querySelector("#contents") || document.body;
 
   observer.observe(targetNode, {
     childList: true,
@@ -298,7 +284,7 @@ function init() {
     detectAndProcessComments();
   }, 10000);
 
-  console.log("K-Blocker v2.1: 初期化完了");
+  console.log("K-Blocker v2.1.1: 初期化完了");
 }
 
 // ページ読み込み完了後に初期化

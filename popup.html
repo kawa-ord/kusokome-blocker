@@ -6,31 +6,39 @@
     <title>KusokomeBlocker クソコメ☆ブロッカー</title>
     <style>
       body {
-        width: 320px;
-        padding: 16px;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        box-sizing: border-box;
+        width: 340px;
+        padding: 18px;
         margin: 0;
         background: #ffffff;
+        color: #263445;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
       }
 
       h1 {
         font-size: 16px;
-        margin: 0 0 12px 0;
-        color: #2c3e50;
+        line-height: 1.4;
+        margin: 0 0 14px 0;
+        color: #243447;
         display: flex;
         align-items: center;
         gap: 6px;
       }
 
       .status {
-        padding: 10px;
-        background-color: #27ae60;
+        padding: 11px 12px;
+        background-color: #218c58;
         color: white;
         border-radius: 6px;
         text-align: center;
         font-weight: 500;
         font-size: 13px;
         margin-bottom: 16px;
+        letter-spacing: 0.01em;
       }
 
       .info {
@@ -41,9 +49,10 @@
       }
 
       .criteria {
-        background-color: #f8f9fa;
-        padding: 12px;
-        border-radius: 6px;
+        background-color: #f5f7fa;
+        border: 1px solid #e8edf2;
+        padding: 13px;
+        border-radius: 8px;
         margin-bottom: 16px;
       }
 
@@ -80,9 +89,9 @@
 
       .support-button {
         display: inline-block;
-        padding: 6px 14px;
-        background-color: #e0e0e0;
-        color: #555;
+        padding: 7px 15px;
+        background-color: #edf1f5;
+        color: #394b5e;
         text-decoration: none;
         border-radius: 4px;
         font-size: 11px;
@@ -92,7 +101,13 @@
       }
 
       .support-button:hover {
-        background-color: #d0d0d0;
+        background-color: #dce4ec;
+      }
+
+      .support-button:focus-visible,
+      .international-link a:focus-visible {
+        outline: 2px solid #2878bd;
+        outline-offset: 3px;
       }
 
       .international-link {
@@ -112,11 +127,19 @@
         text-decoration: underline;
       }
 
-      .version {
-        text-align: center;
+      .release-meta {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 10px;
+        margin-top: 15px;
+        color: #8a96a3;
         font-size: 10px;
-        color: #999;
-        margin-top: 14px;
+      }
+
+      .release-meta span + span {
+        padding-left: 10px;
+        border-left: 1px solid #dce2e8;
       }
     </style>
   </head>
@@ -144,6 +167,6 @@
       </div>
     </div>
 
-    <div class="version">version 2.0</div>
+    <div class="release-meta"><span>Version 2.1.1</span><span>Last Update: 2026.11.03</span></div>
   </body>
 </html>
